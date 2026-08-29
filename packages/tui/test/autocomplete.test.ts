@@ -228,6 +228,21 @@ describe("CombinedAutocompleteProvider", () => {
 			assert.ok(!values?.includes("@packages/ai/src/autocomplete.ts"));
 		});
 
+		test("matches abbreviated nested paths", async () => {
+			setupFolder(baseDir, {
+				files: {
+					"bms-fe/package.json": "{}",
+				},
+			});
+
+			const provider = new CombinedAutocompleteProvider([], baseDir, requireFdPath());
+			const line = "@bmsfepa";
+			const result = await getSuggestions(provider, [line], 0, line.length);
+
+			const values = result?.items.map((item) => item.value);
+			assert.ok(values?.includes("@bms-fe/package.json"));
+		});
+
 		test("matches directory in middle of path with --full-path", async () => {
 			setupFolder(baseDir, {
 				files: {

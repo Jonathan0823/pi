@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join } from "path";
-import { fuzzyFilter } from "./fuzzy.ts";
+import { fuzzyFilter, fuzzyMatch } from "./fuzzy.ts";
 
 const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
 
@@ -17,7 +17,7 @@ function escapeRegex(value: string): string {
 function buildFdPathQuery(query: string): string {
 	const normalized = toDisplayPath(query);
 	if (!normalized.includes("/")) {
-		return normalized;
+		return [...normalized].map((character) => escapeRegex(character)).join(".*");
 	}
 
 	const hasTrailingSeparator = normalized.endsWith("/");
@@ -152,8 +152,8 @@ async function walkDirectoryWithFd(
 		args.push("--max-depth", String(maxDepth));
 	}
 
-	if (toDisplayPath(query).includes("/")) {
-		args.push("--full-path");
+	if (query) {
+		args.push("--full-path", "--ignore-case");
 	}
 
 	if (query) {
@@ -703,20 +703,19 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		const fileName = basename(filePath);
 		const lowerFileName = fileName.toLowerCase();
 		const lowerQuery = query.toLowerCase();
+		const pathMatch = fuzzyMatch(query, toDisplayPath(filePath));
 
-		let score = 0;
+		if (!pathMatch.matches) return 0;
 
-		// Exact filename match (highest)
-		if (lowerFileName === lowerQuery) score = 100;
-		// Filename starts with query
-		else if (lowerFileName.startsWith(lowerQuery)) score = 80;
-		// Substring match in filename
-		else if (lowerFileName.includes(lowerQuery)) score = 50;
-		// Substring match in full path
-		else if (filePath.toLowerCase().includes(lowerQuery)) score = 30;
+		let score = Math.max(1, 300 - pathMatch.score);
 
-		// Directories get a bonus to appear first
-		if (isDirectory && score > 0) score += 10;
+		// Prefer direct filename matches over matches spanning path segments.
+		if (lowerFileName === lowerQuery) score = 1000;
+		else if (lowerFileName.startsWith(lowerQuery)) score = 800;
+		else if (lowerFileName.includes(lowerQuery)) score = 500;
+
+		// Directories get a bonus to appear first.
+		if (isDirectory) score += 10;
 
 		return score;
 	}
